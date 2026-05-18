@@ -8,6 +8,15 @@ export const register = catchAsync(async (req: Request, res: Response, next: Nex
   await AuthService.createSendToken(user, 201, res, req);
 });
 
+export const updateLocation = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const user = await AuthService.updateLocation(req.user!.id, req.body);
+  res.status(200).json({
+    status: 'success',
+    message: 'Location updated successfully',
+    data: { user }
+  });
+});
+
 export const login = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
   const { email, password } = req.body;
 

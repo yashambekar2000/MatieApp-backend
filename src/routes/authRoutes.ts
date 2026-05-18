@@ -14,6 +14,7 @@ const router = Router();
 
 router.post('/register', registerValidation, validate, authController.register);
 router.post('/login', loginValidation, validate, authController.login);
+router.patch('/update-location', protect, authController.updateLocation);
 router.post('/logout', protect, authController.logout);
 router.patch('/change-password', protect, changePasswordValidation, validate, authController.changePassword);
 router.post('/forgot-password', forgotPasswordValidation, validate, authController.forgotPassword);

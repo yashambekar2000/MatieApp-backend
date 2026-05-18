@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import jwt, { Secret } from 'jsonwebtoken';
-import { Session, User } from '@prisma/client';
+import { Session, User, UserRequest, UserResponse } from '../types/auth';
 
 type Role = 'user' | 'admin' | 'super_admin';
 import UserService from './userService';
@@ -23,7 +23,7 @@ export type AuthTokenPayload = {
 };
 
 class AuthService {
-  static signToken(id: string): string {
+  static signToken(id: number): string {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new AppError('JWT secret is not configured', 500);
@@ -34,7 +34,7 @@ class AuthService {
     } as any);
   }
 
-  static async createSendToken(user: { id: string }, statusCode: number, res: Response, req: Request): Promise<void> {
+  static async createSendToken(user: { id: number }, statusCode: number, res: Response, req: Request): Promise<void> {
     const token = this.signToken(user.id);
     const expiresIn = parseInt(process.env.JWT_COOKIE_EXPIRES_IN || '90', 10) * 24 * 60 * 60 * 1000;
     const expiresAt = new Date(Date.now() + expiresIn);
@@ -57,12 +57,12 @@ class AuthService {
     res.cookie('jwt', token, cookieOptions);
 
     await AuditLogService.log({
-      userId: user.id,
+      user_id: user.id,
       action: 'LOGIN',
       entity: 'User',
-      entityId: user.id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: user.id,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     res.status(statusCode).json({
@@ -72,29 +72,40 @@ class AuthService {
     });
   }
 
-  static async register(userData: Record<string, unknown>, req: Request): Promise<Pick<User, 'id' | 'email' | 'name' | 'role' | 'isActive' | 'emailVerified' | 'createdAt'>> {
-    const user = await UserService.create(userData as { email: string; password: string; name: string; role?: Role });
+  static async register(userData: UserRequest, req: Request): Promise<UserResponse> {
+    const user = await UserService.create(userData as UserRequest);
 
     await AuditLogService.log({
-      userId: user.id,
+      user_id: user.id,
       action: 'REGISTER',
       entity: 'User',
-      entityId: user.id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: user.id,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     return user;
   }
 
-  static async login(email: string, password: string, req: Request): Promise<Omit<User, 'password'>> {
+  static async updateLocation(userId: number, locationData: { location_latitude: number; location_longitude: number; address_string?: string }): Promise<UserResponse> {
+    const user = await UserService.findById(userId);
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+    const updatedUser = await UserService.updateUser(userId, locationData);
+    logger.info(`User location updated: ${userId}`);
+    return updatedUser;
+  }
+
+  static async login(email: string, password: string, req: Request): Promise<Omit<UserResponse, 'password'>> {
     const user = await UserService.findByEmail(email);
 
     if (!user || !(await bcrypt.compare(password, (user as UserWithPassword).password))) {
       throw new AppError('Invalid email or password', 401);
     }
 
-    if (!user.isActive) {
+    if (!user.is_active) {
       throw new AppError('Account is deactivated. Please contact support.', 401);
     }
 
@@ -104,22 +115,22 @@ class AuthService {
     return userWithoutPassword;
   }
 
-  static async logout(token: string, userId: string, req: Request): Promise<void> {
+  static async logout(token: string, userId: number, req: Request): Promise<void> {
     await SessionService.invalidateSession(token);
 
     await AuditLogService.log({
-      userId,
+      user_id: userId,
       action: 'LOGOUT',
       entity: 'User',
-      entityId: userId,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: userId,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     logger.info(`User logged out: ${userId}`);
   }
 
-  static async changePassword(userId: string, currentPassword: string, newPassword: string, req: Request): Promise<User | null> {
+  static async changePassword(userId: number, currentPassword: string, newPassword: string, req: Request): Promise<User | null> {
     const user = (await UserService.findById(userId, true)) as UserWithPassword | null;
 
     if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
@@ -130,12 +141,12 @@ class AuthService {
     await SessionService.invalidateAllUserSessions(userId, req.token || undefined);
 
     await AuditLogService.log({
-      userId,
+      user_id: userId,
       action: 'CHANGE_PASSWORD',
       entity: 'User',
-      entityId: userId,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: userId,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     logger.info(`Password changed for user: ${userId}`);
@@ -155,12 +166,12 @@ class AuthService {
       logger.info(`Password reset email sent to: ${email}`);
 
       await AuditLogService.log({
-        userId: user.id,
+        user_id: user.id,
         action: 'FORGOT_PASSWORD',
         entity: 'User',
-        entityId: user.id,
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent') || null,
+        entity_id: user.id,
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') || null,
       });
     } catch (error) {
       if (error instanceof Error) {
@@ -170,17 +181,17 @@ class AuthService {
     }
   }
 
-  static async resetPassword(token: string, newPassword: string, req: Request): Promise<User> {
+  static async resetPassword(token: string, newPassword: string, req: Request): Promise<UserResponse> {
     const user = await UserService.resetPassword(token, newPassword);
     await SessionService.invalidateAllUserSessions(user.id);
 
     await AuditLogService.log({
-      userId: user.id,
+      user_id: user.id,
       action: 'RESET_PASSWORD',
       entity: 'User',
-      entityId: user.id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: user.id,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     return user;
@@ -191,17 +202,17 @@ class AuthService {
       const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as AuthTokenPayload;
       const session = await SessionService.findSessionByToken(token);
 
-      if (!session || session.expiresAt < new Date()) {
+      if (!session || session.expires_at < new Date()) {
         return null;
       }
 
-      const user = await UserService.findById(decoded.id);
-      if (!user || !user.isActive) {
+      const user = await UserService.findById(parseInt(decoded.id));
+      if (!user || !user.is_active) {
         return null;
       }
 
-      if (user.passwordChangedAt) {
-        const changedTimestamp = Math.floor(user.passwordChangedAt.getTime() / 1000);
+      if (user.password_changed_at) {
+        const changedTimestamp = Math.floor(user.password_changed_at.getTime() / 1000);
         if (changedTimestamp > decoded.iat) {
           return null;
         }
@@ -213,7 +224,7 @@ class AuthService {
     }
   }
 
-  static async getUserSessions(userId: string) {
+  static async getUserSessions(userId: number) {
     return SessionService.getUserSessions(userId);
   }
 

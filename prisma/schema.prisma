@@ -8,42 +8,51 @@ datasource db {
 }
 
 model User {
-  id                     String    @id @default(uuid())
-  email                  String    @unique
-  password               String
-  name                   String
-  role                   Role      @default(user)
-  isActive               Boolean   @default(true)
-  emailVerified          Boolean   @default(false)
-  lastLogin              DateTime?
-  passwordChangedAt      DateTime?
-  passwordResetToken     String?
-  passwordResetExpires   DateTime?
-  emailVerificationToken String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                        Int       @id @default(autoincrement())
+  first_name                String
+  last_name                 String
+  firm_name                 String?
+  email                     String    @unique
+  phone_number              String    @unique
+  password                  String
+  role_id                   Int
+  is_active                 Boolean   @default(true)
+  location_latitude         Float
+  location_longitude        Float
+  address_string            String?
+  email_verified            Boolean   @default(false)
+  last_login                DateTime?
+  password_changed_at       DateTime?
+  password_reset_token      String?
+  password_reset_expires    DateTime?
+  email_verification_token  String?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @default(now())
 
-  sessions               Session[]
+  sessions                  Session[]
+  role                      Role      @relation(fields: [role_id], references: [id])
+  audit_logs                AuditLog[]
 
   @@index([email])
-  @@index([role])
-  @@index([isActive])
+  @@index([phone_number])
+  @@index([role_id])
+  @@index([is_active])
   @@map("users")
 }
 
 model Session {
   id           String   @id @default(uuid())
-  userId       String
+  user_id       Int      
   token        String   @unique
-  expiresAt    DateTime
-  userAgent    String?
-  ipAddress    String?
-  createdAt    DateTime @default(now())
+  expires_at    DateTime 
+  user_agent    String?  
+  ip_address    String?  
+  created_at    DateTime @default(now())
   
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([expiresAt])
+  @@index([user_id])
+  @@index([expires_at])
   @@index([token])
   @@map("sessions")
 }
@@ -51,35 +60,43 @@ model Session {
 model BlacklistedToken {
   id        String   @id @default(uuid())
   token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expires_at DateTime
+  created_at DateTime @default(now()) 
 
-  @@index([expiresAt])
+  @@index([expires_at])
   @@index([token])
   @@map("blacklisted_tokens")
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
+  id        Int       @id @default(autoincrement())
+  user_id    Int?      
   action    String
   entity    String?
-  entityId  String?
-  oldValue  Json?
-  newValue  Json?
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
+  entity_id  Int?  
+  old_value  Json?    
+  new_value  Json?    
+  ip_address String?  
+  user_agent String?   
+  created_at DateTime  @default(now())
 
-  @@index([userId])
+  user      User?     @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
   @@index([action])
-  @@index([createdAt])
-  @@index([entity, entityId])
+  @@index([created_at])
+  @@index([entity, entity_id])
   @@map("audit_logs")
 }
 
-enum Role {
-  user
-  admin
-  super_admin
+model Role {
+  id          Int       @id @default(autoincrement())
+  role        String    @unique
+  description String?
+  created_at   DateTime  @default(now()) 
+  updated_at   DateTime  @default(now())
+
+  users       User[]
+
+  @@map("roles")
 }

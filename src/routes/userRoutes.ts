@@ -18,7 +18,7 @@ router.get(
   catchAsync(async (req, res) => {
     const { page = '1', limit = '10', role, isActive, email } = req.query;
     const result = await UserService.getAllUsers(
-      { role: role as Role | undefined, isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined, email: email as string },
+      { role: role as number | undefined, isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined, email: email as string },
       { page: parseInt(page as string, 10), limit: parseInt(limit as string, 10) },
     );
 
@@ -53,13 +53,13 @@ router.patch(
     const user = await UserService.updateUser(req.user!.id, updates as any);
 
     await AuditLogService.log({
-      userId: req.user!.id,
+      user_id: req.user!.id,
       action: 'UPDATE_PROFILE',
       entity: 'User',
-      entityId: req.user!.id,
-      newValue: updates,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: req.user!.id,
+      new_value: updates,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     res.status(200).json({ status: 'success', data: { user } });
@@ -71,7 +71,7 @@ router.get(
   protect,
   restrictTo('admin', 'super_admin'),
   catchAsync(async (req, res, next) => {
-    const user = await UserService.findById(req.params.id);
+    const user = await UserService.findById(parseInt(req.params.id));
     if (!user) {
       return next(new AppError('No user found with that ID', 404));
     }
@@ -90,17 +90,17 @@ router.patch(
   ],
   validate,
   catchAsync(async (req, res) => {
-    const user = await UserService.updateUser(req.params.id, req.body as any);
+    const user = await UserService.updateUser(parseInt(req.params.id), req.body as any);
 
     await AuditLogService.log({
-      userId: req.user!.id,
+      user_id: req.user!.id,
       action: 'UPDATE_USER',
       entity: 'User',
-      entityId: req.params.id,
-      oldValue: { id: req.params.id },
-      newValue: req.body,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: parseInt(req.params.id),
+      old_value: { id: parseInt(req.params.id) },
+      new_value: req.body,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     res.status(200).json({ status: 'success', data: { user } });
@@ -112,21 +112,21 @@ router.delete(
   protect,
   restrictTo('admin', 'super_admin'),
   catchAsync(async (req, res, next) => {
-    const user = await UserService.findById(req.params.id);
+    const user = await UserService.findById(parseInt(req.params.id));
     if (!user) {
       return next(new AppError('No user found with that ID', 404));
     }
 
-    await UserService.deleteUser(req.params.id);
+    await UserService.deleteUser(parseInt(req.params.id));
 
     await AuditLogService.log({
-      userId: req.user!.id,
+      user_id: req.user!.id,
       action: 'DELETE_USER',
       entity: 'User',
-      entityId: req.params.id,
-      oldValue: user,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || null,
+      entity_id: parseInt(req.params.id),
+      old_value: user,
+      ip_address: req.ip,
+      user_agent: req.get('user-agent') || null,
     });
 
     res.status(204).json({ status: 'success', data: null });
@@ -139,7 +139,7 @@ router.get(
   restrictTo('admin', 'super_admin'),
   catchAsync(async (req, res) => {
     const { limit = '50', offset = '0' } = req.query;
-    const activities = await AuditLogService.getUserActivity(req.params.id, parseInt(limit as string, 10), parseInt(offset as string, 10));
+    const activities = await AuditLogService.getUserActivity(parseInt(req.params.id), parseInt(limit as string, 10), parseInt(offset as string, 10));
     res.status(200).json({ status: 'success', data: { activities } });
   }),
 );

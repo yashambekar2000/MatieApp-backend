@@ -1,10 +1,12 @@
-import { Prisma, Session } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { Session } from '../types/auth';
 import database from '../configs/database';
 import logger from '../configs/logger';
+import { User } from '../types/auth';
 
 class SessionService {
   static async createSession(
-    userId: string,
+    userId: number,
     token: string,
     expiresAt: Date,
     userAgent: string | null,
@@ -15,11 +17,11 @@ class SessionService {
     try {
       return await prisma.session.create({
         data: {
-          userId,
+          user_id: userId,
           token,
-          expiresAt,
-          userAgent,
-          ipAddress,
+          expires_at: expiresAt,
+          user_agent: userAgent,
+          ip_address: ipAddress,
         },
       });
     } catch (error) {
@@ -30,7 +32,7 @@ class SessionService {
     }
   }
 
-  static async findSessionByToken(token: string): Promise<(Session & { user: { id: string; email: string; name: string; role: string; isActive: boolean; emailVerified: boolean; lastLogin: Date | null; passwordChangedAt: Date | null; createdAt: Date } }) | null> {
+  static async findSessionByToken(token: string): Promise<(Session & { user: User }) | null> {
     const prisma = database.getPrisma();
 
     try {
@@ -41,13 +43,20 @@ class SessionService {
             select: {
               id: true,
               email: true,
-              name: true,
-              role: true,
-              isActive: true,
-              emailVerified: true,
-              lastLogin: true,
-              passwordChangedAt: true,
-              createdAt: true,
+              first_name: true,
+              last_name: true,
+              firm_name: true,
+              location_latitude: true,
+              location_longitude: true,
+              address_string: true,
+              phone_number: true,
+              role_id: true,
+              is_active: true,
+              email_verified: true,
+              last_login: true,
+              password_changed_at: true,
+              created_at: true,
+              updated_at: true,
             },
           },
         },
@@ -73,11 +82,11 @@ class SessionService {
     }
   }
 
-  static async invalidateAllUserSessions(userId: string, excludeToken?: string): Promise<Prisma.BatchPayload> {
+  static async invalidateAllUserSessions(userId: number, excludeToken?: string): Promise<Prisma.BatchPayload> {
     const prisma = database.getPrisma();
 
     try {
-      const where: Prisma.SessionWhereInput = { userId };
+      const where: Prisma.SessionWhereInput = { user_id: userId };
       if (excludeToken) {
         where.token = { not: excludeToken };
       }
@@ -91,20 +100,20 @@ class SessionService {
     }
   }
 
-  static async getUserSessions(userId: string): Promise<Array<Pick<Session, 'id' | 'token' | 'expiresAt' | 'createdAt' | 'userAgent' | 'ipAddress'>>> {
+  static async getUserSessions(userId: number): Promise<Array<Pick<Session, 'id' | 'token' | 'expires_at' | 'created_at' | 'user_agent' | 'ip_address'>>> {
     const prisma = database.getPrisma();
 
     try {
       return await prisma.session.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' },
         select: {
           id: true,
           token: true,
-          expiresAt: true,
-          createdAt: true,
-          userAgent: true,
-          ipAddress: true,
+          expires_at: true,
+          created_at: true,
+          user_agent: true,
+          ip_address: true,
         },
       });
     } catch (error) {
@@ -120,7 +129,7 @@ class SessionService {
 
     try {
       const result = await prisma.session.deleteMany({
-        where: { expiresAt: { lt: new Date() } },
+        where: { expires_at: { lt: new Date() } },
       });
 
       if (result.count > 0) {
@@ -143,7 +152,7 @@ class SessionService {
       return await prisma.blacklistedToken.create({
         data: {
           token,
-          expiresAt,
+          expires_at: expiresAt,
         },
       });
     } catch (error) {
@@ -175,7 +184,7 @@ class SessionService {
 
     try {
       const result = await prisma.blacklistedToken.deleteMany({
-        where: { expiresAt: { lt: new Date() } },
+        where: { expires_at: { lt: new Date() } },
       });
 
       if (result.count > 0) {
