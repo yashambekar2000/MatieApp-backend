@@ -1,36 +1,46 @@
-const database = require('../configs/database');
-const logger = require('../configs/logger');
+import database from '../configs/database';
+import logger from '../configs/logger';
 
 class AuditLogService {
-  static async log(data) {
+  static async log(data: {
+    userId?: string;
+    action: string;
+    entity: string;
+    entityId: string;
+    oldValue?: unknown;
+    newValue?: unknown;
+    ipAddress?: string;
+    userAgent?: string | null;
+  }) {
     try {
       const prisma = database.getPrisma();
-      
+
       const log = await prisma.auditLog.create({
         data: {
           userId: data.userId,
           action: data.action,
           entity: data.entity,
           entityId: data.entityId,
-          oldValue: data.oldValue,
-          newValue: data.newValue,
+          oldValue: data.oldValue as any,
+          newValue: data.newValue as any,
           ipAddress: data.ipAddress,
           userAgent: data.userAgent,
         },
       });
-      
+
       logger.debug(`Audit log created: ${data.action} by ${data.userId || 'anonymous'}`);
       return log;
     } catch (error) {
-      logger.error(`Failed to create audit log: ${error.message}`);
-      // Don't throw - audit logging should not break the main flow
+      if (error instanceof Error) {
+        logger.error(`Failed to create audit log: ${error.message}`);
+      }
     }
   }
 
-  static async getUserActivity(userId, limit = 50, offset = 0) {
+  static async getUserActivity(userId: string, limit = 50, offset = 0) {
     const prisma = database.getPrisma();
-    
-    return await prisma.auditLog.findMany({
+
+    return prisma.auditLog.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -38,11 +48,11 @@ class AuditLogService {
     });
   }
 
-  static async getEntityHistory(entity, entityId, limit = 50) {
+  static async getEntityHistory(entity: string, entityId: string, limit = 50) {
     const prisma = database.getPrisma();
-    
-    return await prisma.auditLog.findMany({
-      where: { 
+
+    return prisma.auditLog.findMany({
+      where: {
         entity,
         entityId,
       },
@@ -52,4 +62,4 @@ class AuditLogService {
   }
 }
 
-module.exports = AuditLogService;
+export default AuditLogService;

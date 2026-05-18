@@ -1,16 +1,16 @@
-const express = require('express');
-const authController = require('../controllers/authController');
-const { protect } = require('../middlewares/authMiddleware');
-const { validate } = require('../middlewares/validationMiddleware');
-
-const router = express.Router();
-const {
+import { Router } from 'express';
+import * as authController from '../controllers/authController';
+import { protect } from '../middlewares/authMiddleware';
+import { validate } from '../middlewares/validationMiddleware';
+import {
   registerValidation,
   loginValidation,
-    changePasswordValidation,
-    forgotPasswordValidation,
-    resetPasswordValidation,
-} = require('../validations/authValidations');
+  changePasswordValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+} from '../validations/authValidations';
+
+const router = Router();
 
 router.post('/register', registerValidation, validate, authController.register);
 router.post('/login', loginValidation, validate, authController.login);
@@ -22,4 +22,4 @@ router.get('/me', protect, authController.getMe);
 router.get('/sessions', protect, authController.getSessions);
 router.delete('/sessions/:sessionId', protect, authController.invalidateSession);
 
-module.exports = router;
+export default router;

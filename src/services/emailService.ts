@@ -1,18 +1,25 @@
-const nodemailer = require('nodemailer');
-const logger = require('../configs/logger');
+import nodemailer, { SendMailOptions, SentMessageInfo, Transporter } from 'nodemailer';
+import logger from '../configs/logger';
+
+type FallbackTransporter = {
+  sendMail: (mailOptions: SendMailOptions) => Promise<{ messageId: string; previewURL?: string }>;
+};
+
+type GenericTransporter = Transporter | FallbackTransporter;
 
 class EmailService {
+  private transporter: GenericTransporter | null;
+
   constructor() {
     this.transporter = null;
     this.initializeTransporter();
   }
 
-  initializeTransporter() {
+  private async initializeTransporter(): Promise<void> {
     if (process.env.NODE_ENV === 'production') {
-      // Production email configuration
       this.transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT),
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
         secure: process.env.SMTP_PORT === '465',
         auth: {
           user: process.env.SMTP_USER,
@@ -23,16 +30,13 @@ class EmailService {
         rateLimit: 5,
       });
     } else {
-      // Development - use ethereal.email for testing
-      this.createTestAccount();
+      await this.createTestAccount();
     }
   }
 
-  async createTestAccount() {
+  private async createTestAccount(): Promise<void> {
     try {
-      // Generate test SMTP service account from ethereal.email
       const testAccount = await nodemailer.createTestAccount();
-      
       this.transporter = nodemailer.createTransport({
         host: 'smtp.ethereal.email',
         port: 587,
@@ -42,58 +46,54 @@ class EmailService {
           pass: testAccount.pass,
         },
       });
-      
+
       logger.info(`Test email account created: ${testAccount.user}`);
-      logger.info(`Preview URL: https://ethereal.email/login`);
+      logger.info('Preview URL: https://ethereal.email/login');
     } catch (error) {
-      logger.error(`Failed to create test email account: ${error.message}`);
-      // Fallback to a simple transporter that logs emails
+      if (error instanceof Error) {
+        logger.error(`Failed to create test email account: ${error.message}`);
+      }
       this.createFallbackTransporter();
     }
   }
 
-  createFallbackTransporter() {
-    // Fallback transporter that just logs emails (for development)
+  private createFallbackTransporter(): void {
     this.transporter = {
-      sendMail: (mailOptions) => {
+      sendMail: (mailOptions: SendMailOptions) => {
         logger.info('📧 EMAIL (FALLBACK MODE):');
         logger.info(`To: ${mailOptions.to}`);
         logger.info(`Subject: ${mailOptions.subject}`);
-        logger.info(`HTML: ${mailOptions.html?.substring(0, 200)}...`);
-        return Promise.resolve({ messageId: 'fallback-' + Date.now() });
+        logger.info(`HTML: ${(mailOptions.html as string)?.substring(0, 200)}...`);
+        return Promise.resolve({ messageId: `fallback-${Date.now()}` });
       },
     };
   }
 
-  async sendMail(mailOptions) {
+  async sendMail(mailOptions: SendMailOptions): Promise<SentMessageInfo | { messageId: string; previewURL?: string }> {
     if (!this.transporter) {
-      this.initializeTransporter();
+      await this.initializeTransporter();
+    }
+
+    if (!this.transporter) {
+      throw new Error('Email transporter failed to initialize');
     }
 
     try {
-      const info = await this.transporter.sendMail({
+      return await this.transporter.sendMail({
         from: process.env.EMAIL_FROM || 'noreply@yourapp.com',
         ...mailOptions,
       });
-
-      // Log email sending
-      if (process.env.NODE_ENV !== 'production') {
-        logger.info(`Email sent: ${info.messageId}`);
-        if (info.previewURL) {
-          logger.info(`Preview URL: ${info.previewURL}`);
-        }
-      }
-
-      return info;
     } catch (error) {
-      logger.error(`Failed to send email: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to send email: ${error.message}`);
+      }
       throw error;
     }
   }
 
-  async sendVerificationEmail(to, verificationToken) {
+  async sendVerificationEmail(to: string, verificationToken: string) {
     const verificationUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
-    
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -169,9 +169,9 @@ class EmailService {
     });
   }
 
-  async sendPasswordResetEmail(to, resetToken) {
+  async sendPasswordResetEmail(to: string, resetToken: string) {
     const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
-    
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -255,7 +255,7 @@ class EmailService {
     });
   }
 
-  async sendWelcomeEmail(to, name) {
+  async sendWelcomeEmail(to: string, name: string) {
     const html = `
       <!DOCTYPE html>
       <html>
@@ -320,78 +320,6 @@ class EmailService {
       html,
     });
   }
-
-  async sendEmailChangeNotification(to, oldEmail, newEmail) {
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Email Changed</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          .header {
-            background-color: #f44336;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px;
-          }
-          .content {
-            background-color: #f9f9f9;
-            padding: 30px;
-            border-radius: 5px;
-            margin-top: 20px;
-          }
-          .warning {
-            background-color: #ffebee;
-            border-left: 4px solid #f44336;
-            padding: 15px;
-            margin: 20px 0;
-          }
-          .footer {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Email Address Changed</h1>
-        </div>
-        <div class="content">
-          <h2>Security Notification</h2>
-          <p>Your account email address has been changed from <strong>${oldEmail}</strong> to <strong>${newEmail}</strong>.</p>
-          <div class="warning">
-            <strong>⚠️ Didn't make this change?</strong>
-            <p>Please contact our support team immediately to secure your account.</p>
-          </div>
-          <p>If you made this change, no further action is required.</p>
-        </div>
-        <div class="footer">
-          <p>This is an automated message, please do not reply to this email.</p>
-          <p>&copy; 2024 Your Company. All rights reserved.</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    return await this.sendMail({
-      to,
-      subject: 'Security Alert: Email Address Changed',
-      html,
-    });
-  }
 }
 
-// Export singleton instance
-module.exports = new EmailService();
+export default new EmailService();

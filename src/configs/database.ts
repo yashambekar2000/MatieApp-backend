@@ -1,45 +1,48 @@
-const { PrismaClient } = require('@prisma/client');
-const logger = require('./logger');
+import { PrismaClient } from '@prisma/client';
+import logger from './logger';
 
 class Database {
+  private prisma: PrismaClient | null;
+  private isConnected: boolean;
+
   constructor() {
     this.prisma = null;
     this.isConnected = false;
   }
 
-  async connect() {
-    if (this.isConnected) {
+  async connect(): Promise<PrismaClient> {
+    if (this.isConnected && this.prisma) {
       logger.info('Using existing database connection');
       return this.prisma;
     }
 
     try {
       this.prisma = new PrismaClient({
-        log: process.env.NODE_ENV === 'development' 
+        log: process.env.NODE_ENV === 'development'
           ? ['query', 'info', 'warn', 'error']
           : ['error'],
         errorFormat: 'pretty',
       });
 
-      // Test connection
       await this.prisma.$connect();
       this.isConnected = true;
-      
+
       logger.info('PostgreSQL connected successfully');
-      
-      // Handle connection events using process events instead
+
       process.on('beforeExit', () => {
         logger.warn('Process beforeExit - database connection will close');
       });
 
       return this.prisma;
     } catch (error) {
-      logger.error(`Database connection failed: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Database connection failed: ${error.message}`);
+      }
       throw error;
     }
   }
 
-  async disconnect() {
+  async disconnect(): Promise<void> {
     if (!this.isConnected || !this.prisma) {
       return;
     }
@@ -49,35 +52,37 @@ class Database {
       this.isConnected = false;
       logger.info('Database disconnected successfully');
     } catch (error) {
-      logger.error(`Error disconnecting database: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Error disconnecting database: ${error.message}`);
+      }
       throw error;
     }
   }
 
-  getPrisma() {
+  getPrisma(): PrismaClient {
     if (!this.prisma) {
       throw new Error('Database not connected. Call connect() first.');
     }
     return this.prisma;
   }
 
-  // Transaction helper
-  async transaction(callback) {
+  async transaction<T>(callback: (prisma: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => Promise<T>): Promise<T> {
     const prisma = this.getPrisma();
-    return await prisma.$transaction(callback);
+    return prisma.$transaction(callback as any) as Promise<T>;
   }
 
-  // Health check
   async healthCheck() {
     try {
       const prisma = this.getPrisma();
       await prisma.$queryRaw`SELECT 1`;
       return { status: 'healthy', timestamp: new Date().toISOString() };
     } catch (error) {
-      logger.error(`Health check failed: ${error.message}`);
-      return { status: 'unhealthy', error: error.message, timestamp: new Date().toISOString() };
+      if (error instanceof Error) {
+        logger.error(`Health check failed: ${error.message}`);
+      }
+      return { status: 'unhealthy', error: (error instanceof Error ? error.message : 'Unknown error'), timestamp: new Date().toISOString() };
     }
   }
 }
 
-module.exports = new Database();
+export default new Database();

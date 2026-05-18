@@ -1,4 +1,5 @@
-const { body } = require('express-validator');
+import { body } from 'express-validator';
+
 const registerValidation = [
   body('name').notEmpty().withMessage('Name is required').trim(),
   body('email').isEmail().withMessage('Please provide a valid email').normalizeEmail(),
@@ -33,9 +34,10 @@ const resetPasswordValidation = [
     .withMessage('Password must be at least 8 characters'),
 ];
 
-
-exports.registerValidation = registerValidation;
-exports.loginValidation = loginValidation;
-exports.changePasswordValidation = changePasswordValidation;
-exports.forgotPasswordValidation = forgotPasswordValidation;
-exports.resetPasswordValidation = resetPasswordValidation;
+export {
+  registerValidation,
+  loginValidation,
+  changePasswordValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+};

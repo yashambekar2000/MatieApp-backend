@@ -1,34 +1,42 @@
-// src/services/sessionService.js
-const database = require('../configs/database');
-const logger = require('../configs/logger');
+import { Prisma, Session } from '@prisma/client';
+import database from '../configs/database';
+import logger from '../configs/logger';
 
 class SessionService {
-  static async createSession(userId, token, expiresAt, userAgent, ipAddress) {
+  static async createSession(
+    userId: string,
+    token: string,
+    expiresAt: Date,
+    userAgent: string | null,
+    ipAddress: string | null,
+  ): Promise<Session> {
     const prisma = database.getPrisma();
-    
+
     try {
       return await prisma.session.create({
         data: {
           userId,
           token,
           expiresAt,
-          userAgent: userAgent || null,
-          ipAddress: ipAddress || null,
+          userAgent,
+          ipAddress,
         },
       });
     } catch (error) {
-      logger.error(`Failed to create session: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to create session: ${error.message}`);
+      }
       throw error;
     }
   }
 
-  static async findSessionByToken(token) {
+  static async findSessionByToken(token: string): Promise<(Session & { user: { id: string; email: string; name: string; role: string; isActive: boolean; emailVerified: boolean; lastLogin: Date | null; passwordChangedAt: Date | null; createdAt: Date } }) | null> {
     const prisma = database.getPrisma();
-    
+
     try {
       return await prisma.session.findUnique({
         where: { token },
-        include: { 
+        include: {
           user: {
             select: {
               id: true,
@@ -40,49 +48,52 @@ class SessionService {
               lastLogin: true,
               passwordChangedAt: true,
               createdAt: true,
-            }
-          }
+            },
+          },
         },
       });
     } catch (error) {
-      logger.error(`Failed to find session: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to find session: ${error.message}`);
+      }
       return null;
     }
   }
 
-  static async invalidateSession(token) {
+  static async invalidateSession(token: string): Promise<Session | null> {
     const prisma = database.getPrisma();
-    
+
     try {
       return await prisma.session.delete({ where: { token } });
     } catch (error) {
-      // If session doesn't exist, that's fine
-      if (error.code !== 'P2025') {
+      if (error instanceof Error && (error as any).code !== 'P2025') {
         logger.error(`Failed to invalidate session: ${error.message}`);
       }
       return null;
     }
   }
 
-  static async invalidateAllUserSessions(userId, excludeToken = null) {
+  static async invalidateAllUserSessions(userId: string, excludeToken?: string): Promise<Prisma.BatchPayload> {
     const prisma = database.getPrisma();
-    
+
     try {
-      const where = { userId };
+      const where: Prisma.SessionWhereInput = { userId };
       if (excludeToken) {
         where.token = { not: excludeToken };
       }
-      
+
       return await prisma.session.deleteMany({ where });
     } catch (error) {
-      logger.error(`Failed to invalidate user sessions: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to invalidate user sessions: ${error.message}`);
+      }
       return { count: 0 };
     }
   }
 
-  static async getUserSessions(userId) {
+  static async getUserSessions(userId: string): Promise<Array<Pick<Session, 'id' | 'token' | 'expiresAt' | 'createdAt' | 'userAgent' | 'ipAddress'>>> {
     const prisma = database.getPrisma();
-    
+
     try {
       return await prisma.session.findMany({
         where: { userId },
@@ -97,80 +108,88 @@ class SessionService {
         },
       });
     } catch (error) {
-      logger.error(`Failed to get user sessions: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to get user sessions: ${error.message}`);
+      }
       return [];
     }
   }
 
-  static async cleanupExpiredSessions() {
+  static async cleanupExpiredSessions(): Promise<number> {
     const prisma = database.getPrisma();
-    
+
     try {
       const result = await prisma.session.deleteMany({
         where: { expiresAt: { lt: new Date() } },
       });
-      
+
       if (result.count > 0) {
         logger.info(`Cleaned up ${result.count} expired sessions`);
       }
-      
+
       return result.count;
     } catch (error) {
-      logger.error(`Failed to cleanup expired sessions: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to cleanup expired sessions: ${error.message}`);
+      }
       return 0;
     }
   }
 
-  static async blacklistToken(token, userId, expiresAt) {
+  static async blacklistToken(token: string, _userId: string, expiresAt: Date) {
     const prisma = database.getPrisma();
-    
+
     try {
       return await prisma.blacklistedToken.create({
         data: {
           token,
-          userId,
           expiresAt,
         },
       });
     } catch (error) {
-      logger.error(`Failed to blacklist token: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to blacklist token: ${error.message}`);
+      }
       return null;
     }
   }
 
-  static async isTokenBlacklisted(token) {
+  static async isTokenBlacklisted(token: string): Promise<boolean> {
     const prisma = database.getPrisma();
-    
+
     try {
       const blacklisted = await prisma.blacklistedToken.findUnique({
         where: { token },
       });
-      
       return !!blacklisted;
     } catch (error) {
-      logger.error(`Failed to check blacklisted token: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to check blacklisted token: ${error.message}`);
+      }
       return false;
     }
   }
 
-  static async cleanupExpiredBlacklistedTokens() {
+  static async cleanupExpiredBlacklistedTokens(): Promise<number> {
     const prisma = database.getPrisma();
-    
+
     try {
       const result = await prisma.blacklistedToken.deleteMany({
         where: { expiresAt: { lt: new Date() } },
       });
-      
+
       if (result.count > 0) {
         logger.info(`Cleaned up ${result.count} expired blacklisted tokens`);
       }
-      
+
       return result.count;
     } catch (error) {
-      logger.error(`Failed to cleanup expired blacklisted tokens: ${error.message}`);
+      if (error instanceof Error) {
+        logger.error(`Failed to cleanup expired blacklisted tokens: ${error.message}`);
+      }
       return 0;
     }
   }
 }
 
-module.exports = SessionService;
+export default SessionService;
